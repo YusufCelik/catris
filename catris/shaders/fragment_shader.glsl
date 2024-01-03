@@ -6,8 +6,10 @@ in vec2 TexCoord;
 
 // texture sampler
 uniform sampler2D texture1;
+uniform float alpha; // Uniform to control the alpha value
 
 void main()
 {
-	FragColor = texture(texture1, TexCoord);
+    vec4 texColor = texture(texture1, TexCoord);
+    FragColor = vec4(texColor.rgb, alpha); // Apply the alpha value
 }
