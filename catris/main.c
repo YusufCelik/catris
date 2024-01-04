@@ -143,6 +143,50 @@ typedef struct cVec2 {
 	float y;
 } cVec2;
 
+typedef struct Scene Scene; // Forward declaration
+
+typedef enum {
+	SCENE_ACTIVE,
+	SCENE_TRANSITION_IN,
+	SCENE_TRANSITION_OUT,
+	SCENE_INACTIVE
+} SceneState;
+
+struct Scene {
+	void(*init)(Scene *self);
+	void(*update)(Scene *self, double deltaTime);
+	void(*draw)(Scene *self);
+	void(*destroy)(Scene *self);
+	SceneState state;
+	// Additional scene-specific data...
+};
+
+
+void levelInit(Scene *self) {
+	// Initialization code for scene1
+}
+
+void levelUpdate(Scene *self, double deltaTime) {
+	// Update code for scene1
+}
+
+void levelDraw(Scene *self) {
+	// Drawing code for scene1
+}
+
+void levelDestroy(Scene *self) {
+	// Cleanup code for scene1
+}
+
+// Function to create and return scene1
+Scene createLevelScene() {
+	Scene scene;
+	scene.init = levelInit;
+	scene.update = levelUpdate;
+	scene.draw = levelDraw;
+	scene.destroy = levelDestroy;
+	return scene;
+}
 
 float easeOutElastic(float progress) {
 	// Simplified implementation of easeOutElastic
@@ -1010,6 +1054,9 @@ int main(void)
 	initializeAnimObjectsPointerArray(gameState.animations.rowDestructionAnimation.animation_objects);
 	gameState.animations.rowDestructionAnimation.type = ANIM_EASE_OUT_BOUNCE;
 
+	Scene currentScene = createLevelScene();
+	currentScene.init(&currentScene);
+
 	/* Loop until the user closes the window */
 	while (!glfwWindowShouldClose(window))
 	{
@@ -1017,9 +1064,11 @@ int main(void)
 		double deltaTime = currentTime - lastTime;
 		lastTime = currentTime;
 
-		// float alpha = (cos(totalTime / alphaDuration * 2.0f * M_PI) + 1.0f) / 2.0f;
+		// Update the current scene
+		currentScene.update(&currentScene, deltaTime);
 
-
+		// Draw the current scene
+		currentScene.draw(&currentScene);
 
 		// render
 		// ------
@@ -1127,6 +1176,8 @@ int main(void)
 		// -----
 		processInput(window);
 	}
+
+	currentScene.destroy(&currentScene);
 
 	free(gameState.blocks.array);
 	gameState.blocks.array = NULL;
