@@ -69,14 +69,26 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="animation.c" />
     <ClCompile Include="glad.c" />
+    <ClCompile Include="logging.c" />
     <ClCompile Include="main.c" />
+    <ClCompile Include="opengl.c" />
+    <ClCompile Include="tetromino.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="animation.h" />
+    <ClInclude Include="config.h" />
     <ClInclude Include="dependencies\include\GLFW\glfw3.h" />
     <ClInclude Include="dependencies\include\GLFW\glfw3native.h" />
     <ClInclude Include="dependencies\include\stb_image.h" />
+    <ClInclude Include="game_state.h" />
+    <ClInclude Include="logging.h" />
+    <ClInclude Include="opengl.h" />
+    <ClInclude Include="scene.h" />
+    <ClInclude Include="system_actions.h" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="tetromino.h" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="dependencies\assets\atlas.png">
