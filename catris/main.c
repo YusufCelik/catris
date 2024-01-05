@@ -21,6 +21,14 @@
 #define Y_MAX -(SCREEN_HEIGHT /2)
 #define TILE_SIZE 64.0f
 
+#define POSITION_ATTRIBUTE 0
+#define COLOR_ATTRIBUTE 1
+#define TEXTURE_COORD_ATTRIBUTE 2
+#define VERTEX_SIZE 8 // Number of floats per vertex
+#define POSITION_SIZE 3
+#define COLOR_SIZE 3
+#define TEXTURE_COORD_SIZE 2
+
 void processInput(GLFWwindow *window);
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void checkCompileErrors(unsigned int shader, const char* type);
@@ -76,11 +84,6 @@ typedef struct BG {
 	RenderComponent renderComponent;
 } BG;
 
-typedef struct BlockNode {
-	SingleBlock data;
-	struct BlockNode* next;
-} BlockNode;
-
 typedef struct {
 	SingleBlock *array;
 	size_t size;
@@ -123,34 +126,15 @@ typedef struct {
 	Animation rowDestructionAnimation;
 } Animations;
 
-typedef struct GameState {
-	SingleBlock current_blocks[4];
-	BG bg;
-	TetrominoShape current_shape;
-	int num_blocks;
-	mat4 projection;
-	unsigned int SHADER_PROGRAM;
-	SystemActions action_queue;
-	unsigned int grid[GRID_ROWS][GRID_COLS];
-	BlockNode* blockList;
-	DynamicArray blocks;
-	Animations animations;
-} GameState;
-
-
-typedef struct cVec2 {
-	float x;
-	float y;
-} cVec2;
-
-typedef struct Scene Scene; // Forward declaration
-
 typedef enum {
 	SCENE_ACTIVE,
 	SCENE_TRANSITION_IN,
 	SCENE_TRANSITION_OUT,
 	SCENE_INACTIVE
 } SceneState;
+
+
+typedef struct Scene Scene;
 
 struct Scene {
 	void(*init)(Scene *self);
@@ -161,6 +145,19 @@ struct Scene {
 	// Additional scene-specific data...
 };
 
+
+typedef struct GameState {
+	Scene *currentScene;
+	BG bg;
+	TetrominoShape current_shape;
+	int num_blocks;
+	mat4 projection;
+	unsigned int SHADER_PROGRAM;
+	SystemActions action_queue;
+	unsigned int grid[GRID_ROWS][GRID_COLS];
+	DynamicArray blocks;
+	Animations animations;
+} GameState;
 
 void levelInit(Scene *self) {
 	// Initialization code for scene1
@@ -178,13 +175,18 @@ void levelDestroy(Scene *self) {
 	// Cleanup code for scene1
 }
 
-// Function to create and return scene1
-Scene createLevelScene() {
-	Scene scene;
-	scene.init = levelInit;
-	scene.update = levelUpdate;
-	scene.draw = levelDraw;
-	scene.destroy = levelDestroy;
+Scene *createLevelScene() {
+	Scene *scene = malloc(sizeof(Scene));
+	if (scene == NULL) {
+		// Handle allocation failure if needed
+		return NULL;
+	}
+
+	scene->init = levelInit;
+	scene->update = levelUpdate;
+	scene->draw = levelDraw;
+	scene->destroy = levelDestroy;
+
 	return scene;
 }
 
@@ -323,23 +325,6 @@ void removeSingleBlock(DynamicArray *da, float x_value, float y_value) {
 		printf("NOTHING WAS FOUND");
 	}
 }
-
-cVec2 get_block_position(mat4 local_transform) {
-	cVec2 pos;
-	pos.x = local_transform[3][0];
-	pos.y = local_transform[3][1];
-
-	return pos;
-}
-
-cVec2 get_block_scale(mat4 local_transform) {
-	cVec2 scale;
-	scale.x = local_transform[0][0];
-	scale.y = local_transform[1][1];
-
-	return scale;
-}
-
 
 void copySingleBlock(SingleBlock* dest, const SingleBlock* src) {
 	memcpy(dest->model, src->model, sizeof(mat4)); // Copy mat4
@@ -497,6 +482,41 @@ void opengl_translate_block(mat4 model, GameState *gameState) {
 	glUniformMatrix4fv(model_uniform_location, 1, GL_FALSE, (float *)model);
 }
 
+void setupVertexAttrib(GLuint index, GLint size, GLsizei stride, const void* pointer) {
+	glVertexAttribPointer(index, size, GL_FLOAT, GL_FALSE, stride * sizeof(float), pointer);
+	glEnableVertexAttribArray(index);
+}
+
+void setupShaderAndUniforms(GLuint shaderProgram, const mat4 projection, const mat4 model, float alpha) {
+	glUseProgram(shaderProgram);
+	GLint modelUniformLoc = glGetUniformLocation(shaderProgram, "model");
+	GLint projUniformLoc = glGetUniformLocation(shaderProgram, "projection");
+	GLint alphaLoc = glGetUniformLocation(shaderProgram, "alpha");
+
+	glUniformMatrix4fv(projUniformLoc, 1, GL_FALSE, (float *)projection);
+	glUniformMatrix4fv(modelUniformLoc, 1, GL_FALSE, (float *)model);
+	glUniform1f(alphaLoc, alpha);
+}
+
+void setupVertexData(GLuint *VAO, GLuint *VBO, GLuint *VEO, const float *vertices, size_t vertSize, const unsigned int *indices, size_t indSize) {
+	glGenVertexArrays(1, VAO);
+	glGenBuffers(1, VBO);
+	glGenBuffers(1, VEO);
+
+	glBindVertexArray(*VAO);
+	glBindBuffer(GL_ARRAY_BUFFER, *VBO);
+	glBufferData(GL_ARRAY_BUFFER, vertSize, vertices, GL_STATIC_DRAW);
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *VEO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indSize, indices, GL_STATIC_DRAW);
+
+	setupVertexAttrib(POSITION_ATTRIBUTE, POSITION_SIZE, VERTEX_SIZE, (void*)0);
+	setupVertexAttrib(COLOR_ATTRIBUTE, COLOR_SIZE, VERTEX_SIZE, (void*)(POSITION_SIZE * sizeof(float)));
+	setupVertexAttrib(TEXTURE_COORD_ATTRIBUTE, TEXTURE_COORD_SIZE, VERTEX_SIZE, (void*)((POSITION_SIZE + COLOR_SIZE) * sizeof(float)));
+
+	glBindVertexArray(0);
+}
+
 void opengl_init_bg(GameState *gameState) {
 	float vertices[] = {
 		// positions          // colors           // texture coords
@@ -512,41 +532,43 @@ void opengl_init_bg(GameState *gameState) {
 	};
 
 	glm_mat4_identity(gameState->bg.model);
-
 	vec3 size = { SCREEN_WIDTH, SCREEN_HEIGHT, 1.0f };
-	glm_scale(&gameState->bg.model, &size);
+	glm_scale(gameState->bg.model, size);
 
-	glUseProgram(gameState->SHADER_PROGRAM);
-	GLint model_uniform_location = glGetUniformLocation(gameState->SHADER_PROGRAM, "model");
-	GLint projection_uniform_location = glGetUniformLocation(gameState->SHADER_PROGRAM, "projection");
-	GLint alpha_location = glGetUniformLocation(gameState->SHADER_PROGRAM, "alpha");
+	setupShaderAndUniforms(gameState->SHADER_PROGRAM, gameState->projection, gameState->bg.model, 1.0f);
+	setupVertexData(&gameState->bg.renderComponent.VAO, &gameState->bg.renderComponent.VBO, &gameState->bg.renderComponent.VEO, vertices, sizeof(vertices), indices, sizeof(indices));
+}
 
-	glUniformMatrix4fv(projection_uniform_location, 1, GL_FALSE, (float *)gameState->projection);
-	glUniformMatrix4fv(model_uniform_location, 1, GL_FALSE, (float *)gameState->bg.model);
-	glUniform1f(alpha_location, 1.0f);
+void opengl_init_block(SingleBlock *block, GameState *gameState) {
+	float uv_coords[8];
+	int texture_atlas_width = 640;
+	int texture_atlas_height = 640;
+	int tile_width = 64;
+	int tile_height = 64;
 
-	glGenVertexArrays(1, &gameState->bg.renderComponent.VAO);
-	glGenBuffers(1, &gameState->bg.renderComponent.VBO);
-	glGenBuffers(1, &gameState->bg.renderComponent.VEO);
+	calculate_uv_coords(
+		texture_atlas_width, texture_atlas_height,
+		block->renderComponent.tile_x, block->renderComponent.tile_y, tile_width, tile_height, uv_coords);
 
-	glBindVertexArray(gameState->bg.renderComponent.VAO);
+	float vertices[] = {
+		// positions          // colors           // texture coords
+		0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 0.0f, uv_coords[0], uv_coords[1],   // top right
+		0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, uv_coords[2], uv_coords[3],   // bottom right
+		-0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, uv_coords[4], uv_coords[5],   // bottom left
+		-0.5f, 0.5f, 0.0f, 1.0f, 1.0f, 0.0f, uv_coords[6], uv_coords[7]    // top left 
+	};
 
-	glBindBuffer(GL_ARRAY_BUFFER, gameState->bg.renderComponent.VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+	unsigned int indices[] = {
+		0, 1, 3, // first triangle
+		1, 2, 3  // second triangle
+	};
 
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gameState->bg.renderComponent.VEO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+	glm_mat4_identity(block->model);
+	vec3 size = { 64, 64, 1.0f };
+	glm_scale(block->model, size);
 
-	// position attribute
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
-	glEnableVertexAttribArray(0);
-	// color attribute
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-	glEnableVertexAttribArray(1);
-	// texture coord attribute
-	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-	glEnableVertexAttribArray(2);
-	glBindVertexArray(0);
+	setupShaderAndUniforms(gameState->SHADER_PROGRAM, gameState->projection, block->model, 0.0f);
+	setupVertexData(&block->renderComponent.VAO, &block->renderComponent.VBO, &block->renderComponent.VEO, vertices, sizeof(vertices), indices, sizeof(indices));
 }
 
 void initializeGrid(unsigned int grid[GRID_ROWS][GRID_COLS]) {
@@ -671,68 +693,6 @@ int findHighestRowWithAllOnes(unsigned int grid[GRID_ROWS][GRID_COLS]) {
 	}
 
 	return highestRow;
-}
-
-void opengl_init_block(SingleBlock *block, GameState *gameState) {
-	float uv_coords[8];
-	int texture_atlas_width = 640;
-	int texture_atlas_height = 640;
-	int tile_width = 64;
-	int tile_height = 64;
-
-	calculate_uv_coords(
-		texture_atlas_width, texture_atlas_height,
-		block->renderComponent.tile_x, block->renderComponent.tile_y, tile_width, tile_height, uv_coords);
-
-	float vertices[] = {
-		// positions          // colors           // texture coords
-		0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 0.0f, uv_coords[0], uv_coords[1],   // top right
-		0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, uv_coords[2], uv_coords[3],   // bottom right
-		-0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, uv_coords[4], uv_coords[5],   // bottom left
-		-0.5f, 0.5f, 0.0f, 1.0f, 1.0f, 0.0f, uv_coords[6], uv_coords[7]    // top left 
-	};
-
-	unsigned int indices[] = {
-		0, 1, 3, // first triangle
-		1, 2, 3  // second triangle
-	};
-
-	glm_mat4_identity(block->model);
-
-	vec3 size = { 64, 64, 1.0f };
-	glm_scale(&block->model, &size);
-
-	glUseProgram(gameState->SHADER_PROGRAM);
-	GLint model_uniform_location = glGetUniformLocation(gameState->SHADER_PROGRAM, "model");
-	GLint projection_uniform_location = glGetUniformLocation(gameState->SHADER_PROGRAM, "projection");
-	GLint alpha_uniform_location = glGetUniformLocation(gameState->SHADER_PROGRAM, "alpha");
-
-	glUniform1f(alpha_uniform_location, 0.0f);
-	glUniformMatrix4fv(projection_uniform_location, 1, GL_FALSE, (float *)gameState->projection);
-	glUniformMatrix4fv(model_uniform_location, 1, GL_FALSE, (float *)block->model);
-
-	glGenVertexArrays(1, &block->renderComponent.VAO);
-	glGenBuffers(1, &block->renderComponent.VBO);
-	glGenBuffers(1, &block->renderComponent.VEO);
-
-	glBindVertexArray(block->renderComponent.VAO);
-
-	glBindBuffer(GL_ARRAY_BUFFER, block->renderComponent.VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, block->renderComponent.VEO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
-	// position attribute
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
-	glEnableVertexAttribArray(0);
-	// color attribute
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-	glEnableVertexAttribArray(1);
-	// texture coord attribute
-	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-	glEnableVertexAttribArray(2);
-	glBindVertexArray(0);
 }
 
 
@@ -996,7 +956,6 @@ int main(void)
 	GameState gameState;
 	gameState.action_queue = IDLE;
 	gameState.num_blocks = 0;
-	gameState.blockList = NULL;
 	gameState.blocks.array = (SingleBlock *)malloc(10 * sizeof(SingleBlock));
 	gameState.blocks.size = 0;
 	gameState.blocks.capacity = 10;
@@ -1054,8 +1013,10 @@ int main(void)
 	initializeAnimObjectsPointerArray(gameState.animations.rowDestructionAnimation.animation_objects);
 	gameState.animations.rowDestructionAnimation.type = ANIM_EASE_OUT_BOUNCE;
 
-	Scene currentScene = createLevelScene();
-	currentScene.init(&currentScene);
+	gameState.currentScene = createLevelScene(); // Assuming this function allocates and returns a Scene*
+	if (gameState.currentScene != NULL) {
+		gameState.currentScene->init(gameState.currentScene);
+	}
 
 	/* Loop until the user closes the window */
 	while (!glfwWindowShouldClose(window))
@@ -1064,11 +1025,10 @@ int main(void)
 		double deltaTime = currentTime - lastTime;
 		lastTime = currentTime;
 
-		// Update the current scene
-		currentScene.update(&currentScene, deltaTime);
-
-		// Draw the current scene
-		currentScene.draw(&currentScene);
+		if (gameState.currentScene != NULL) {
+			gameState.currentScene->update(gameState.currentScene, deltaTime);
+			gameState.currentScene->draw(gameState.currentScene);
+		}
 
 		// render
 		// ------
@@ -1177,7 +1137,12 @@ int main(void)
 		processInput(window);
 	}
 
-	currentScene.destroy(&currentScene);
+
+	if (gameState.currentScene != NULL) {
+		gameState.currentScene->destroy(gameState.currentScene);
+		free(gameState.currentScene); // Assuming the scene was dynamically allocated
+		gameState.currentScene = NULL;
+	}
 
 	free(gameState.blocks.array);
 	gameState.blocks.array = NULL;
@@ -1233,15 +1198,6 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 
 	if (glfwGetKey(window, GLFW_KEY_V) == GLFW_PRESS) {
 		printGrid(gameState->grid);
-
-		BlockNode* current = gameState->blockList;
-		while (current != NULL) {
-			float x, y;
-			x = current->data.model[3][0];
-			y = current->data.model[3][1];
-			printf("x: %f y: %f \n", x, y);
-			current = current->next;
-		}
 	}
 
 	if (glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS) {
