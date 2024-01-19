@@ -10,24 +10,14 @@
 #include <time.h> 
 #include <stdbool.h>
 
-#define GRID_ROWS 15
-#define GRID_COLS 16
-#define GRID_SURFFACE GRID_COLS * GRID_ROWS
-#define SCREEN_WIDTH 1024.0f
-#define SCREEN_HEIGHT 960.0f
-#define X_MIN -(SCREEN_WIDTH / 2)
-#define X_MAX (SCREEN_WIDTH / 2)
-#define Y_MIN (SCREEN_HEIGHT /2)
-#define Y_MAX -(SCREEN_HEIGHT /2)
-#define TILE_SIZE 64.0f
+#include "config.h"
+#include "ecs.h"
+#include "camera.h"
+#include "app_context.h"
+#include "opengl.h"
+#include "scene.h"
+#include "hash.h"
 
-#define POSITION_ATTRIBUTE 0
-#define COLOR_ATTRIBUTE 1
-#define TEXTURE_COORD_ATTRIBUTE 2
-#define VERTEX_SIZE 8 // Number of floats per vertex
-#define POSITION_SIZE 3
-#define COLOR_SIZE 3
-#define TEXTURE_COORD_SIZE 2
 
 void processInput(GLFWwindow *window);
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
@@ -134,20 +124,20 @@ typedef enum {
 } SceneState;
 
 
-typedef struct Scene Scene;
-
-struct Scene {
-	void(*init)(Scene *self);
-	void(*update)(Scene *self, double deltaTime);
-	void(*draw)(Scene *self);
-	void(*destroy)(Scene *self);
-	SceneState state;
-	// Additional scene-specific data...
-};
+//typedef struct Scene Scene;
+//
+//struct Scene {
+//	void(*init)(Scene *self);
+//	void(*update)(Scene *self, double deltaTime);
+//	void(*draw)(Scene *self);
+//	void(*destroy)(Scene *self);
+//	SceneState state;
+//	// Additional scene-specific data...
+//};
 
 
 typedef struct GameState {
-	Scene *currentScene;
+	//Scene *currentScene;
 	BG bg;
 	TetrominoShape current_shape;
 	int num_blocks;
@@ -159,36 +149,36 @@ typedef struct GameState {
 	Animations animations;
 } GameState;
 
-void levelInit(Scene *self) {
-	// Initialization code for scene1
-}
-
-void levelUpdate(Scene *self, double deltaTime) {
-	// Update code for scene1
-}
-
-void levelDraw(Scene *self) {
-	// Drawing code for scene1
-}
-
-void levelDestroy(Scene *self) {
-	// Cleanup code for scene1
-}
-
-Scene *createLevelScene() {
-	Scene *scene = malloc(sizeof(Scene));
-	if (scene == NULL) {
-		// Handle allocation failure if needed
-		return NULL;
-	}
-
-	scene->init = levelInit;
-	scene->update = levelUpdate;
-	scene->draw = levelDraw;
-	scene->destroy = levelDestroy;
-
-	return scene;
-}
+//void levelInit(Scene *self) {
+//	// Initialization code for scene1
+//}
+//
+//void levelUpdate(Scene *self, double deltaTime) {
+//	// Update code for scene1
+//}
+//
+//void levelDraw(Scene *self) {
+//	// Drawing code for scene1
+//}
+//
+//void levelDestroy(Scene *self) {
+//	// Cleanup code for scene1
+//}
+//
+//Scene *createLevelScene() {
+//	Scene *scene = malloc(sizeof(Scene));
+//	if (scene == NULL) {
+//		// Handle allocation failure if needed
+//		return NULL;
+//	}
+//
+//	scene->init = levelInit;
+//	scene->update = levelUpdate;
+//	scene->draw = levelDraw;
+//	scene->destroy = levelDestroy;
+//
+//	return scene;
+//}
 
 float easeOutElastic(float progress) {
 	// Simplified implementation of easeOutElastic
@@ -335,65 +325,6 @@ void copySingleBlock(SingleBlock* dest, const SingleBlock* src) {
 	dest->renderComponent = src->renderComponent;
 }
 
-char* readShaderSource(const char* filePath) {
-	FILE *fp;
-	long size = 0;
-	char* shaderContent;
-
-	/* Read File to get size */
-	fp = fopen(filePath, "rb");
-	if (fp == NULL) {
-		return "";
-	}
-	fseek(fp, 0L, SEEK_END);
-	size = ftell(fp) + 1;
-	fclose(fp);
-
-	/* Read File for Content */
-	fp = fopen(filePath, "r");
-	shaderContent = memset(malloc(size), '\0', size);
-	fread(shaderContent, 1, size - 1, fp);
-	fclose(fp);
-
-	return shaderContent;
-}
-
-void opengl_set_current_texture(GLuint texture) {
-	glBindTexture(GL_TEXTURE_2D, texture); // all upcoming GL_TEXTURE_2D operations now have effect on this texture object
-}
-
-GLuint opengl_load_texture_atlas(char* path) {
-	unsigned int texture;
-	int width, height, nrChannels;
-	stbi_set_flip_vertically_on_load(1);
-	unsigned char *data = stbi_load(path, &width, &height, &nrChannels, 0);
-
-	glGenTextures(1, &texture);
-	glBindTexture(GL_TEXTURE_2D, texture); // all upcoming GL_TEXTURE_2D operations now have effect on this texture object
-	// set the texture wrapping parameters
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);	// set texture wrapping to GL_REPEAT (default wrapping method)
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-	// set texture filtering parameters
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	// load and generate the texture
-
-	if (data)
-	{
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
-		glGenerateMipmap(GL_TEXTURE_2D);
-	}
-	else
-	{
-		printf("Could not load texture");
-	}
-
-
-	stbi_image_free(data);
-
-	return texture;
-}
-
 float get_block_absolute_x(mat4 model) {
 	return roundf(model[3][0] - 32.0f);
 }
@@ -482,62 +413,6 @@ void opengl_translate_block(mat4 model, GameState *gameState) {
 	glUniformMatrix4fv(model_uniform_location, 1, GL_FALSE, (float *)model);
 }
 
-void setupVertexAttrib(GLuint index, GLint size, GLsizei stride, const void* pointer) {
-	glVertexAttribPointer(index, size, GL_FLOAT, GL_FALSE, stride * sizeof(float), pointer);
-	glEnableVertexAttribArray(index);
-}
-
-void setupShaderAndUniforms(GLuint shaderProgram, const mat4 projection, const mat4 model, float alpha) {
-	glUseProgram(shaderProgram);
-	GLint modelUniformLoc = glGetUniformLocation(shaderProgram, "model");
-	GLint projUniformLoc = glGetUniformLocation(shaderProgram, "projection");
-	GLint alphaLoc = glGetUniformLocation(shaderProgram, "alpha");
-
-	glUniformMatrix4fv(projUniformLoc, 1, GL_FALSE, (float *)projection);
-	glUniformMatrix4fv(modelUniformLoc, 1, GL_FALSE, (float *)model);
-	glUniform1f(alphaLoc, alpha);
-}
-
-void setupVertexData(GLuint *VAO, GLuint *VBO, GLuint *VEO, const float *vertices, size_t vertSize, const unsigned int *indices, size_t indSize) {
-	glGenVertexArrays(1, VAO);
-	glGenBuffers(1, VBO);
-	glGenBuffers(1, VEO);
-
-	glBindVertexArray(*VAO);
-	glBindBuffer(GL_ARRAY_BUFFER, *VBO);
-	glBufferData(GL_ARRAY_BUFFER, vertSize, vertices, GL_STATIC_DRAW);
-
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *VEO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indSize, indices, GL_STATIC_DRAW);
-
-	setupVertexAttrib(POSITION_ATTRIBUTE, POSITION_SIZE, VERTEX_SIZE, (void*)0);
-	setupVertexAttrib(COLOR_ATTRIBUTE, COLOR_SIZE, VERTEX_SIZE, (void*)(POSITION_SIZE * sizeof(float)));
-	setupVertexAttrib(TEXTURE_COORD_ATTRIBUTE, TEXTURE_COORD_SIZE, VERTEX_SIZE, (void*)((POSITION_SIZE + COLOR_SIZE) * sizeof(float)));
-
-	glBindVertexArray(0);
-}
-
-void opengl_init_bg(GameState *gameState) {
-	float vertices[] = {
-		// positions          // colors           // texture coords
-		0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f,   // top right
-		0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,   // bottom right
-		-0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,   // bottom left
-		-0.5f, 0.5f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f    // top left 
-	};
-
-	unsigned int indices[] = {
-		0, 1, 3, // first triangle
-		1, 2, 3  // second triangle
-	};
-
-	glm_mat4_identity(gameState->bg.model);
-	vec3 size = { SCREEN_WIDTH, SCREEN_HEIGHT, 1.0f };
-	glm_scale(gameState->bg.model, size);
-
-	setupShaderAndUniforms(gameState->SHADER_PROGRAM, gameState->projection, gameState->bg.model, 1.0f);
-	setupVertexData(&gameState->bg.renderComponent.VAO, &gameState->bg.renderComponent.VBO, &gameState->bg.renderComponent.VEO, vertices, sizeof(vertices), indices, sizeof(indices));
-}
 
 void opengl_init_block(SingleBlock *block, GameState *gameState) {
 	float uv_coords[8];
@@ -950,6 +825,84 @@ void animateRowDestructionCompletedCallback(GameState* gameState, SingleBlock **
 	*num_animation_objects = 0;
 }
 
+
+
+
+unsigned int initialize_sprite(ApplicationContext *context, char* texture, float tile_x, float tile_y, float tile_width, float tile_height ) {
+	float uv_coords[8];
+	SceneManager *sceneManager = context->sceneManager;
+	EntityID cameraId = context->activeCameraId;
+	
+	EntityID sprite = createEntity(sceneManager->currentScene);
+	ModelComponent model_component;
+	glm_mat4_identity(model_component.model);
+
+	VertexComponent vertex_component;
+
+	unsigned int texture_dimensions[2] = { 0, 0 };
+	get_texture_dimensions_from_id(context, texture, texture_dimensions);
+
+	calculate_uv_coords(
+		texture_dimensions[0], texture_dimensions[1],
+		tile_x, tile_y, tile_width, tile_height, uv_coords);
+
+	float sprite_vertices[32] = {
+		// positions          // colors           // texture coords
+		0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 0.0f, uv_coords[0], uv_coords[1],   // top right
+		0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, uv_coords[2], uv_coords[3],   // bottom right
+		-0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, uv_coords[4], uv_coords[5],   // bottom left
+		-0.5f, 0.5f, 0.0f, 1.0f, 1.0f, 0.0f, uv_coords[6], uv_coords[7]    // top left 
+	};
+
+	unsigned int sprite_indices[6] = {
+		0, 1, 3, // first triangle
+		1, 2, 3  // second triangle
+	};
+
+	OpenglComponent opengl_component;
+	opengl_component.VAO = 0;
+	opengl_component.VBO = 0;
+	opengl_component.VEO = 0;
+
+	memcpy(vertex_component.vertices, sprite_vertices, sizeof(sprite_vertices));
+	memcpy(vertex_component.indices, sprite_indices, sizeof(sprite_indices));
+
+	TextureComponent texture_component;
+	texture_component.path = texture;
+	texture_component.textureId = get_texture_id_from_path(context, texture_component.path);
+
+	sceneManager->currentScene->ecs.modelComponent[sprite] = model_component;
+	sceneManager->currentScene->ecs.vertexComponents[sprite] = vertex_component;
+	sceneManager->currentScene->ecs.openglComponents[sprite] = opengl_component;
+	sceneManager->currentScene->ecs.textureComponents[sprite] = texture_component;
+
+	setupShaderAndUniforms(context->shaderManager->programID, sceneManager->currentScene->ecs.modelComponent[cameraId].model, sceneManager->currentScene->ecs.modelComponent[sprite].model, 1.0f);
+	setupVertexData(&sceneManager->currentScene->ecs.openglComponents[sprite].VAO, &sceneManager->currentScene->ecs.openglComponents[sprite].VBO, &sceneManager->currentScene->ecs.openglComponents[sprite].VEO, sprite_vertices, sizeof(sprite_vertices), sprite_indices, sizeof(sprite_indices));
+
+	sceneManager->currentScene->ecs.entities[sprite].componentMask |= COMPONENT_MODEL;
+	sceneManager->currentScene->ecs.entities[sprite].componentMask |= COMPONENT_OPENGL;
+	sceneManager->currentScene->ecs.entities[sprite].componentMask |= COMPONENT_VERTEX;
+	sceneManager->currentScene->ecs.entities[sprite].componentMask |= COMPONENT_TEXTURE;
+	
+	return sprite;
+}
+
+void initialize_background(ApplicationContext *context) {
+	unsigned int spriteID = initialize_sprite(context, "bg", 0.0, 0.0, SCREEN_WIDTH, SCREEN_HEIGHT);
+	mat4 *model = context->sceneManager->currentScene->ecs.modelComponent[spriteID].model;
+
+	vec3 size = { SCREEN_WIDTH, SCREEN_HEIGHT, 1.0f };
+	glm_scale(context->sceneManager->currentScene->ecs.modelComponent[spriteID].model, size);
+}
+
+void initialize_tetromino_block(ApplicationContext *context) {
+	unsigned int spriteID = initialize_sprite(context, "atlas", 0, 0, TILE_SIZE, TILE_SIZE);
+	mat4 *model = context->sceneManager->currentScene->ecs.modelComponent[spriteID].model;
+
+	vec3 size = { TILE_SIZE, TILE_SIZE, 1.0f };
+	glm_scale(context->sceneManager->currentScene->ecs.modelComponent[spriteID].model, size);
+}
+
 int main(void)
 {
 	GLFWwindow* window;
@@ -977,9 +930,6 @@ int main(void)
 	glfwSetWindowUserPointer(window, &gameState);
 
 	spawn_block(gameState.current_shape, &gameState);
-
-	GLuint bg_texture = opengl_load_texture_atlas("assets/bg.jpg");
-	opengl_init_bg(&gameState);
 
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -1013,10 +963,27 @@ int main(void)
 	initializeAnimObjectsPointerArray(gameState.animations.rowDestructionAnimation.animation_objects);
 	gameState.animations.rowDestructionAnimation.type = ANIM_EASE_OUT_BOUNCE;
 
-	gameState.currentScene = createLevelScene(); // Assuming this function allocates and returns a Scene*
-	if (gameState.currentScene != NULL) {
-		gameState.currentScene->init(gameState.currentScene);
-	}
+	ApplicationContext context;
+	ShaderManager* shaderManager = (ShaderManager*)malloc(sizeof(ShaderManager));
+	SceneManager* sceneManager = (SceneManager*)malloc(sizeof(SceneManager));
+	TextureManager* textureManager = (TextureManager*)malloc(sizeof(TextureManager));
+
+	context.sceneManager = sceneManager;
+	context.shaderManager = shaderManager;
+	context.textureManager = textureManager;
+
+	Scene firstLevel;
+	
+	sceneManager->currentScene = &firstLevel;
+
+	initECS(sceneManager->currentScene);
+	EntityID cameraId = createCamera(sceneManager->currentScene);
+	setActiveCamera(cameraId, &context);
+	initShaders(&context);
+
+	load_textures(&context);
+	initialize_background(&context);
+	initialize_tetromino_block(&context);
 
 	/* Loop until the user closes the window */
 	while (!glfwWindowShouldClose(window))
@@ -1025,28 +992,39 @@ int main(void)
 		double deltaTime = currentTime - lastTime;
 		lastTime = currentTime;
 
-		if (gameState.currentScene != NULL) {
-			gameState.currentScene->update(gameState.currentScene, deltaTime);
-			gameState.currentScene->draw(gameState.currentScene);
-		}
-
 		// render
 		// ------
 		glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+		for (int x = 0; x < MAX_ENTITIES; x++) {
+			if ((sceneManager->currentScene->ecs.entities[x].componentMask & COMPONENT_OPENGL) != 0) {
+				opengl_set_current_texture(sceneManager->currentScene->ecs.textureComponents[x].textureId);
+				glBindVertexArray(sceneManager->currentScene->ecs.openglComponents[x].VAO);
+				glUseProgram(context.shaderManager->programID);
+				GLint model_uniform_location = glGetUniformLocation(context.shaderManager->programID, "model");
+				GLint projection_uniform_location = glGetUniformLocation(context.shaderManager->programID, "projection");
+				unsigned int activeCameraId = context.activeCameraId;
+				glUniformMatrix4fv(projection_uniform_location, 1, GL_FALSE, (float *)context.sceneManager->currentScene->ecs.modelComponent[activeCameraId].model);
+				glUniformMatrix4fv(model_uniform_location, 1, GL_FALSE, (float *)context.sceneManager->currentScene->ecs.modelComponent[x].model);
+				glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+				glBindVertexArray(0);
+			}
+		}
 
-		opengl_set_current_texture(bg_texture);
-		glBindVertexArray(gameState.bg.renderComponent.VAO);
-		glUseProgram(gameState.SHADER_PROGRAM);
-		GLint model_uniform_location = glGetUniformLocation(gameState.SHADER_PROGRAM, "model");
-		GLint projection_uniform_location = glGetUniformLocation(gameState.SHADER_PROGRAM, "projection");
+
+
+		//opengl_set_current_texture(bg_texture);
+		//glBindVertexArray(gameState.bg.renderComponent.VAO);
+		//glUseProgram(gameState.SHADER_PROGRAM);
+		//GLint model_uniform_location = glGetUniformLocation(gameState.SHADER_PROGRAM, "model");
+		//GLint projection_uniform_location = glGetUniformLocation(gameState.SHADER_PROGRAM, "projection");
 		GLint alphaLocation = glGetUniformLocation(gameState.SHADER_PROGRAM, "alpha");
 
-		glUniformMatrix4fv(projection_uniform_location, 1, GL_FALSE, (float *)gameState.projection);
-		glUniformMatrix4fv(model_uniform_location, 1, GL_FALSE, (float *)gameState.bg.model);
-		glUniform1f(alphaLocation, (float) 1.0f);
-		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+		//glUniformMatrix4fv(projection_uniform_location, 1, GL_FALSE, (float *)gameState.projection);
+		//glUniformMatrix4fv(model_uniform_location, 1, GL_FALSE, (float *)gameState.bg.model);
+		//glUniform1f(alphaLocation, (float) 1.0f);
+		//glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
 		opengl_set_current_texture(blocks_texture);
 
@@ -1135,13 +1113,6 @@ int main(void)
 		// input
 		// -----
 		processInput(window);
-	}
-
-
-	if (gameState.currentScene != NULL) {
-		gameState.currentScene->destroy(gameState.currentScene);
-		free(gameState.currentScene); // Assuming the scene was dynamically allocated
-		gameState.currentScene = NULL;
 	}
 
 	free(gameState.blocks.array);

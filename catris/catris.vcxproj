@@ -69,14 +69,26 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="app_context.c" />
+    <ClCompile Include="camera.c" />
+    <ClCompile Include="ecs.c" />
     <ClCompile Include="glad.c" />
+    <ClCompile Include="hash.c" />
     <ClCompile Include="main.c" />
+    <ClCompile Include="opengl.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="app_context.h" />
+    <ClInclude Include="camera.h" />
+    <ClInclude Include="config.h" />
     <ClInclude Include="dependencies\include\GLFW\glfw3.h" />
     <ClInclude Include="dependencies\include\GLFW\glfw3native.h" />
     <ClInclude Include="dependencies\include\stb_image.h" />
+    <ClInclude Include="ecs.h" />
+    <ClInclude Include="hash.h" />
+    <ClInclude Include="opengl.h" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="scene.h" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="dependencies\assets\atlas.png">
